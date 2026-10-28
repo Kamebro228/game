@@ -1,6 +1,8 @@
 extends Node3D
 
 var player: CharacterBody3D
+var avatar: Node3D
+var limbs: Array[Node3D] = []
 var guard: Node3D
 var camera: Camera3D
 var pivot: Node3D
@@ -38,6 +40,37 @@ func box_at(pos: Vector3, size: Vector3, color: Color, solid := true) -> MeshIns
 		body.add_child(collision)
 		mesh.add_child(body)
 	return mesh
+
+func character_part(parent: Node3D, position: Vector3, size: Vector3, color: Color) -> void:
+	var part := MeshInstance3D.new()
+	var shape := BoxMesh.new()
+	shape.size = size
+	part.mesh = shape
+	part.position = position
+	part.material_override = material(color)
+	parent.add_child(part)
+
+func make_avatar() -> Node3D:
+	var model := Node3D.new()
+	# Simplified articulated model based on the approved outfit.
+	character_part(model, Vector3(0, 1.22, 0), Vector3(0.53, 0.62, 0.30), Color("253341"))
+	character_part(model, Vector3(0, 1.30, -0.157), Vector3(0.22, 0.45, 0.02), Color("303036"))
+	character_part(model, Vector3(0, 1.72, 0), Vector3(0.30, 0.34, 0.27), Color("be9072"))
+	character_part(model, Vector3(0, 1.90, 0.01), Vector3(0.32, 0.10, 0.29), Color("302820"))
+	for side in [-1.0, 1.0]:
+		var arm := Node3D.new()
+		arm.position = Vector3(side * 0.34, 1.45, 0)
+		model.add_child(arm)
+		character_part(arm, Vector3(0, -0.25, 0), Vector3(0.17, 0.48, 0.20), Color("253341"))
+		character_part(arm, Vector3(0, -0.54, 0), Vector3(0.14, 0.13, 0.16), Color("be9072"))
+		limbs.append(arm)
+		var leg := Node3D.new()
+		leg.position = Vector3(side * 0.14, 0.93, 0)
+		model.add_child(leg)
+		character_part(leg, Vector3(0, -0.39, 0), Vector3(0.23, 0.78, 0.25), Color("343333"))
+		character_part(leg, Vector3(0, -0.84, -0.06), Vector3(0.24, 0.16, 0.37), Color("47382e"))
+		limbs.append(leg)
+	return model
 
 func caption(pos: Vector3, text: String) -> void:
 	var label := Label3D.new()
@@ -91,13 +124,10 @@ func _ready() -> void:
 	collider.shape = capsule
 	collider.position.y = 0.9
 	player.add_child(collider)
-	var avatar := MeshInstance3D.new()
 	var visual := CapsuleMesh.new()
 	visual.radius = 0.35
 	visual.height = 1.8
-	avatar.mesh = visual
-	avatar.position.y = 0.9
-	avatar.material_override = material(Color("b2b9c4"))
+	avatar = make_avatar()
 	player.add_child(avatar)
 	pivot = Node3D.new()
 	add_child(pivot)
@@ -158,6 +188,14 @@ func _physics_process(delta: float) -> void:
 	if player.is_on_floor() and Input.is_physical_key_pressed(KEY_SPACE):
 		player.velocity.y = 7
 	player.move_and_slide()
+	if direction.length() > 0.01:
+		avatar.rotation.y = lerp_angle(avatar.rotation.y, atan2(-direction.x, -direction.z), minf(delta * 12.0, 1.0))
+	var stride := sin(elapsed * (12.0 if speed > 4.0 else 8.0)) * (0.55 if direction.length() > 0.01 and player.is_on_floor() else 0.0)
+	limbs[0].rotation.x = stride
+	limbs[1].rotation.x = -stride
+	limbs[2].rotation.x = -stride
+	limbs[3].rotation.x = stride
+	avatar.scale.y = lerpf(avatar.scale.y, 0.78 if crouch else 1.0, minf(delta * 8.0, 1.0))
 	pivot.position = player.position + Vector3(0, 1, 0)
 	pivot.rotation = Vector3(pitch, yaw, 0)
 	guard.position = Vector3(sin(elapsed * 0.4) * 6, 0, -12)
